@@ -21,12 +21,20 @@ class JoinFilter:
         )
         self.output_queue = middleware.MessageMiddlewareQueueRabbitMQ(
             MOM_HOST, OUTPUT_QUEUE
-        )
+        )        
+        self.aggregator_acked = {}
 
     def process_messsage(self, message, ack, nack):
         logging.info("Received top")
-        fruit_top = message_protocol.internal.deserialize(message)
-        self.output_queue.send(message_protocol.internal.serialize(fruit_top))
+        fruit_top, client_id = message_protocol.internal.deserialize(message)
+        if client_id not in self.aggregator_acked:
+            self.aggregator_acked[client_id] = 1
+            self.output_queue.send(
+                        message_protocol.internal.serialize([
+                            fruit_top,
+                            client_id
+                        ])
+                    )                
         ack()
 
     def start(self):

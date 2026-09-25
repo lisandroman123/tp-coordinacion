@@ -2,19 +2,19 @@ from abc import ABC, abstractmethod
 
 class MessageMiddlewareMessageError(Exception):
 	def __init__(self, message="Internal error cannot be solved"):
-		super.__init__(message)
+		super().__init__(message)
 
 class MessageMiddlewareDisconnectedError(Exception):
 	def __init__(self, message="Connection lost with middleware"):
-		super.__init__(message)
+		super().__init__(message)
 
 class MessageMiddlewareCloseError(Exception):
 	def __init__(self, message="Internal error cannot be solved when Closing"):
-			super.__init__(message)
+			super().__init__(message)
 
 class MessageMiddlewareDeleteError(Exception):
 	def __init__(self, message="Internal error cannot be solved when Stop Consuming"):
-			super.__init__(message)    
+			super().__init__(message)    
 
 class MessageMiddleware(ABC):
 

@@ -12,6 +12,48 @@ SUM_PREFIX = os.environ["SUM_PREFIX"]
 SUM_CONTROL_EXCHANGE = "SUM_CONTROL_EXCHANGE"
 AGGREGATION_AMOUNT = int(os.environ["AGGREGATION_AMOUNT"])
 AGGREGATION_PREFIX = os.environ["AGGREGATION_PREFIX"]
+AMOUNT_OF_FIELDS = 3
+
+class SumsAckedMonitor:
+    def __init__(self):
+        self.sums_acked = {}
+        self.lock = threading.Lock()
+
+    def start_client(self, client_id):
+        with self.lock:
+            self.sums_acked[client_id] = 1
+
+    def sum_client(self, client_id):
+        with self.lock:
+            self.sums_acked[client_id] += 1
+
+    def get_sum(self, client_id):
+        return self.sums_acked[client_id]
+
+class MonitorFruitAmounts:
+    def __init__(self):
+        self.amount_by_fruit = {}
+        self.client_id_processing = -1
+        self.condition = threading.Condition()
+
+    def add_fruit_amount_for_client(self,fruit,amount,client_id):        
+        with self.condition:
+            self.client_id_processing = client_id            
+            if client_id not in self.amount_by_fruit:
+                self.amount_by_fruit.setdefault(client_id, {})
+
+            self.amount_by_fruit[client_id][fruit] = self.amount_by_fruit[client_id].get(
+                fruit,            
+                fruit_item.FruitItem(fruit, 0)
+            ) + fruit_item.FruitItem(fruit, int(amount))
+            self.client_id_processing = -1
+            self.condition.notify_all()
+
+    def get_fruits_amount_for_client(self,client_id):
+        with self.condition:
+            while self.client_id_processing == client_id:
+                self.condition.wait()        
+            return list(self.amount_by_fruit[client_id].values())
 
 class SumFilter:
     def __init__(self):
@@ -23,47 +65,84 @@ class SumFilter:
             data_output_exchange = middleware.MessageMiddlewareExchangeRabbitMQ(
                 MOM_HOST, AGGREGATION_PREFIX, [f"{AGGREGATION_PREFIX}_{i}"]
             )
-            self.data_output_exchanges.append(data_output_exchange)
-        self.amount_by_fruit = {}
+            self.data_output_exchanges.append(data_output_exchange)                
+        self.monitor_sums = SumsAckedMonitor()
+        self.monitor_fruit_amounts = MonitorFruitAmounts() 
 
-    def _process_data(self, fruit, amount):
-        logging.info(f"Process data")
-        self.amount_by_fruit[fruit] = self.amount_by_fruit.get(
-            fruit, fruit_item.FruitItem(fruit, 0)
-        ) + fruit_item.FruitItem(fruit, int(amount))
+    def _process_data(self, fruit, amount, client_id):
+        self.monitor_fruit_amounts.add_fruit_amount_for_client(fruit,amount,client_id)
+    
+    def _process_eof(self,client_id):                
+        if SUM_AMOUNT > 1:            
+            logging.info(f"EOF OF {client_id}")
+            for i in range (0,SUM_AMOUNT):
+                if i != ID:                            
+                    self.output_exchange.send_to(message_protocol.internal.serialize([client_id,ID]),f"{SUM_PREFIX}_{i}")                        
+                    self.monitor_sums.start_client(client_id)                 
+        else:
+            self._broadcast_aggregator_eof(client_id)
+    
+    def _process_sums_eof(self,client_id,sum_id):
+        if sum_id != ID:
+            fruits = self.monitor_fruit_amounts.get_fruits_amount_for_client(client_id)            
+            for final_fruit_item in fruits:                
+                self.data_eof_exchange.send_to(message_protocol.internal.serialize([final_fruit_item.fruit, final_fruit_item.amount, client_id]),f"{SUM_PREFIX}_{sum_id}")
+            self.data_eof_exchange.send_to(message_protocol.internal.serialize([client_id,sum_id]),f"{SUM_PREFIX}_{sum_id}") 
+            logging.info(f"EOF OF {client_id} FROM {ID} TO {sum_id}")        
+        else: 
+            self.monitor_sums.sum_client(client_id)
+            sums = self.monitor_sums.get_sum(client_id)
+            logging.info(f"EOF OF A SUM +1 TOTAL SUM: {sums}")                                           
+            if sums == SUM_AMOUNT:
+                logging.info("ALL END OF FILES OF OTHER SUMS REACHED")
+                self._broadcast_aggregator_eof(client_id)
 
-    def _process_eof(self):
-        logging.info(f"Broadcasting data messages")
-        for final_fruit_item in self.amount_by_fruit.values():
+    def _broadcast_aggregator_eof(self,client_id):
+        logging.info(f"Broadcasting DATA MESSAGES to aggregator")
+        fruits = self.monitor_fruit_amounts.get_fruits_amount_for_client(client_id)
+        for final_fruit_item in fruits:
             for data_output_exchange in self.data_output_exchanges:
-                data_output_exchange.send(
-                    message_protocol.internal.serialize(
-                        [final_fruit_item.fruit, final_fruit_item.amount]
-                    )
-                )
-
-        logging.info(f"Broadcasting EOF message")
+                data_output_exchange.send(message_protocol.internal.serialize([final_fruit_item.fruit, final_fruit_item.amount,client_id]))
+        logging.info(f"Broadcasting EOF message: {client_id, ID}")    
         for data_output_exchange in self.data_output_exchanges:
-            data_output_exchange.send(message_protocol.internal.serialize([]))
-
+            data_output_exchange.send(message_protocol.internal.serialize([client_id]))    
 
     def process_data_messsage(self, message, ack, nack):
         fields = message_protocol.internal.deserialize(message)
-        if len(fields) == 2:
+        if len(fields) == AMOUNT_OF_FIELDS:
             self._process_data(*fields)
-        else:
-            self._process_eof(*fields)
+        elif len(fields) == 2:            
+            self._process_sums_eof(*fields)
+        elif len(fields) == 1:
+            self._process_eof(*fields)            
         ack()
 
-    def start(self):
+    def _start_handler_consuming(self):
+        self.output_exchange = middleware.MessageMiddlewareExchangeRabbitMQ(MOM_HOST,SUM_PREFIX,[f"{SUM_PREFIX}_{ID}"])
         self.input_queue.start_consuming(self.process_data_messsage)
 
+    def _run(self):
+        if SUM_AMOUNT>1:
+            self.data_eof_exchange = middleware.MessageMiddlewareExchangeRabbitMQ(
+                MOM_HOST, SUM_PREFIX, [f"{SUM_PREFIX}_{ID}"]
+            )            
+            logging.info(f"EXCHANGE CREATED: binding_key {SUM_PREFIX}_{ID}")
+
+            self.data_eof_exchange.start_consuming(self.process_data_messsage)
+
+    def start(self):
+        input_thread = threading.Thread(
+            target=self._start_handler_consuming,            
+        )
+        input_thread.start()
+        self._run()
+        input_thread.join()
+    
 def main():
     logging.basicConfig(level=logging.INFO)
     sum_filter = SumFilter()
     sum_filter.start()
     return 0
-
 
 if __name__ == "__main__":
     main()

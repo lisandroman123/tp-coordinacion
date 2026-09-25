@@ -53,7 +53,7 @@ def handle_client_response(client_list):
                 deserialized_message = (
                     message_handler_instance.deserialize_result_message(message)
                 )
-
+                
                 if not deserialized_message:
                     client_index += 1
                     continue

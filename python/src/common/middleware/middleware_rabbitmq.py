@@ -72,6 +72,14 @@ class MessageMiddlewareExchangeRabbitMQ(MessageMiddlewareExchange):
         except pika.exceptions.AMQPError as e:
             raise MessageMiddlewareMessageError() from e
 
+    def send_to(self, message, binding_key):
+        try:                    
+            self.channel.basic_publish(exchange=self.exchange, routing_key=binding_key, body=message)
+        except pika.exceptions.AMQPConnectionError as e:
+            raise MessageMiddlewareDisconnectedError() from e
+        except pika.exceptions.AMQPError as e:
+                raise MessageMiddlewareMessageError() from e
+        
     def start_consuming(self, on_message_callback):
         def callback(channel, method, properties, body):
 
