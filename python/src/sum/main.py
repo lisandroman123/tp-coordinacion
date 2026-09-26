@@ -97,15 +97,18 @@ class SumFilter:
                 logging.info("ALL END OF FILES OF OTHER SUMS REACHED")
                 self._broadcast_aggregator_eof(client_id)
 
-    def _broadcast_aggregator_eof(self,client_id):
-        logging.info(f"Broadcasting DATA MESSAGES to aggregator")
+    def get_aggregator_id(self,client_id):
+        return (client_id % AGGREGATION_AMOUNT)
+
+    def _broadcast_aggregator_eof(self,client_id):                
         fruits = self.monitor_fruit_amounts.get_fruits_amount_for_client(client_id)
-        for final_fruit_item in fruits:
-            for data_output_exchange in self.data_output_exchanges:
-                data_output_exchange.send(message_protocol.internal.serialize([final_fruit_item.fruit, final_fruit_item.amount,client_id]))
-        logging.info(f"Broadcasting EOF message: {client_id, ID}")    
-        for data_output_exchange in self.data_output_exchanges:
-            data_output_exchange.send(message_protocol.internal.serialize([client_id]))    
+        aggregator_id = self.get_aggregator_id(client_id)
+        for i in range(0,AGGREGATION_AMOUNT):            
+            if i == aggregator_id:
+                for final_fruit_item in fruits:                        
+                    self.data_output_exchanges[i].send_to(message_protocol.internal.serialize([final_fruit_item.fruit, final_fruit_item.amount,client_id]), f"{AGGREGATION_PREFIX}_{aggregator_id}")                    
+                logging.info(f"Broadcasting EOF message: {client_id, ID}")            
+                self.data_output_exchanges[i].send_to(message_protocol.internal.serialize([client_id]), f"{AGGREGATION_PREFIX}_{aggregator_id}")    
 
     def process_data_messsage(self, message, ack, nack):
         fields = message_protocol.internal.deserialize(message)
