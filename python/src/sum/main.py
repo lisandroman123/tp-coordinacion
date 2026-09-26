@@ -1,7 +1,7 @@
 import os
 import logging
 import threading
-
+import signal 
 from common import middleware, message_protocol, fruit_item
 
 ID = int(os.environ["ID"])
@@ -133,14 +133,24 @@ class SumFilter:
     def start(self):
         input_thread = threading.Thread(
             target=self._start_handler_consuming,            
-        )
+        )        
         input_thread.start()
+        signal.signal(
+            signal.SIGTERM,
+            lambda signum, frame: self.handle_sigterm(),
+        )
         self._run()
         input_thread.join()
-    
+
+    def handle_sigterm(self):        
+        self.input_queue.stop_consuming()
+        self.input_queue.close()  
+        self.data_eof_exchange.stop_consuming()
+        self.data_eof_exchange.close()                         
+
 def main():
     logging.basicConfig(level=logging.INFO)
-    sum_filter = SumFilter()
+    sum_filter = SumFilter()    
     sum_filter.start()
     return 0
 

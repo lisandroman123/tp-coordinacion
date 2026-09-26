@@ -1,6 +1,6 @@
 import os
 import logging
-
+import signal
 from common import middleware, message_protocol, fruit_item
 
 MOM_HOST = os.environ["MOM_HOST"]
@@ -37,9 +37,16 @@ class JoinFilter:
                     )                
         ack()
 
-    def start(self):
-        self.input_queue.start_consuming(self.process_messsage)
+    def handle_sigterm(self):
+        self.input_queue.stop_consuming()
+        self.input_queue.close()
 
+    def start(self):
+        signal.signal(
+                    signal.SIGTERM,
+                    lambda signum, frame: self.handle_sigterm(),
+                )
+        self.input_queue.start_consuming(self.process_messsage)
 
 def main():
     logging.basicConfig(level=logging.INFO)
