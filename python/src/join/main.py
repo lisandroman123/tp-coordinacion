@@ -22,6 +22,7 @@ class JoinFilter:
         self.output_queue = middleware.MessageMiddlewareQueueRabbitMQ(
             MOM_HOST, OUTPUT_QUEUE
         )                
+        self.sigterm_received = True
 
     def process_messsage(self, message, ack, nack):
         logging.info("Received top")
@@ -36,15 +37,21 @@ class JoinFilter:
         ack()
 
     def handle_sigterm(self):
+        self.sigterm_received = True
         self.input_queue.stop_consuming()
-        self.input_queue.close()
+        
 
     def start(self):
         signal.signal(
                     signal.SIGTERM,
                     lambda signum, frame: self.handle_sigterm(),
                 )
-        self.input_queue.start_consuming(self.process_messsage)
+        try:
+            self.input_queue.start_consuming(self.process_messsage)
+        except Exception:
+            if self.sigterm_received:
+                return
+            raise
 
 def main():
     logging.basicConfig(level=logging.INFO)

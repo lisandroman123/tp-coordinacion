@@ -24,7 +24,8 @@ class AggregationFilter:
         self.output_queue = middleware.MessageMiddlewareQueueRabbitMQ(
             MOM_HOST, OUTPUT_QUEUE
         )
-        self.fruit_top = {}        
+        self.fruit_top = {}    
+        self.sigterm_received = False    
         
 
     def _process_data(self, fruit, amount, client_id):
@@ -62,15 +63,20 @@ class AggregationFilter:
         ack()
 
     def handle_sigterm(self):
-        self.input_exchange.stop_consuming()
-        self.input_exchange.close()
+        self.sigterm_received = True
+        self.input_exchange.stop_consuming()        
 
     def start(self):
         signal.signal(
             signal.SIGTERM,
             lambda signum, frame: self.handle_sigterm(),
         )
-        self.input_exchange.start_consuming(self.process_messsage)
+        try:
+            self.input_exchange.start_consuming(self.process_messsage)
+        except Exception:
+            if self.sigterm_received:
+                return
+            raise
 
 
 def main():

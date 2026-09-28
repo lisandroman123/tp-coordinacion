@@ -68,6 +68,7 @@ class SumFilter:
             self.data_output_exchanges.append(data_output_exchange)                
         self.monitor_sums = SumsAckedMonitor()
         self.monitor_fruit_amounts = MonitorFruitAmounts() 
+        self.sigterm_received = False
 
     def _process_data(self, fruit, amount, client_id):
         self.monitor_fruit_amounts.add_fruit_amount_for_client(fruit,amount,client_id)
@@ -134,22 +135,28 @@ class SumFilter:
             self.data_eof_exchange.start_consuming(self.process_data_messsage)
 
     def start(self):
+        signal.signal(
+                    signal.SIGTERM,
+                    lambda signum, frame: self.handle_sigterm(),
+                )
         input_thread = threading.Thread(
             target=self._start_handler_consuming,            
-        )        
-        input_thread.start()
-        signal.signal(
-            signal.SIGTERM,
-            lambda signum, frame: self.handle_sigterm(),
         )
-        self._run()
-        input_thread.join()
+        try:        
+            input_thread.start()        
+            self._run()
+            input_thread.join()
+        except Exception:
+            if self.sigterm_received:
+                return 
+            raise 
 
-    def handle_sigterm(self):        
+    def handle_sigterm(self):   
+        self.sigterm_received = True     
         self.input_queue.stop_consuming()
-        self.input_queue.close()  
+        #self.input_queue.close()  
         self.data_eof_exchange.stop_consuming()
-        self.data_eof_exchange.close()                         
+        #self.data_eof_exchange.close()                         
 
 def main():
     logging.basicConfig(level=logging.INFO)
