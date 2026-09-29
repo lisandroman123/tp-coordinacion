@@ -13,7 +13,7 @@ SUM_PREFIX = os.environ["SUM_PREFIX"]
 AGGREGATION_AMOUNT = int(os.environ["AGGREGATION_AMOUNT"])
 AGGREGATION_PREFIX = os.environ["AGGREGATION_PREFIX"]
 TOP_SIZE = int(os.environ["TOP_SIZE"])
-AMOUNT_OF_FIELDS = 3
+FRUIT_TYPE = 3
 
 class AggregationFilter:
 
@@ -56,7 +56,7 @@ class AggregationFilter:
     def process_messsage(self, message, ack, nack):
         logging.info("Process message")
         fields = message_protocol.internal.deserialize(message)
-        if len(fields) == AMOUNT_OF_FIELDS:
+        if len(fields) == FRUIT_TYPE:
             self._process_data(*fields)
         else:
             self._process_eof(*fields)
