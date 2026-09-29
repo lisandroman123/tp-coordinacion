@@ -110,4 +110,5 @@ class MessageMiddlewareExchangeRabbitMQ(MessageMiddlewareExchange):
         except pika.exceptions.AMQPConnectionError as e:
             raise MessageMiddlewareDisconnectedError() from e
 
-
+    def add_callback_threadsafe(self, callback):
+        self.connection.add_callback_threadsafe(callback)

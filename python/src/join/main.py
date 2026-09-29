@@ -48,6 +48,9 @@ class JoinFilter:
                 )
         try:
             self.input_queue.start_consuming(self.process_messsage)
+            self.input_queue.close()
+            for oq in self.output_queue:
+                oq.close()
         except Exception:
             if self.sigterm_received:
                 return
