@@ -19,7 +19,7 @@ El segundo tipo de mensaje, son las frutas y cantidades de cliente pedido a otro
 Esto implica que la informacion que manipula el SUM puede caer en una race condition entre el hilo principal y el hilo alterno que recibe informacion de los otros pares. 
 Para solucionar este problema, se encapsuló en un Monitor el diccionario de clientes con frutas permitiendo que los hilos lo modifiquen de manera sincronizada. 
 A su vez, tambien tengo que determinar cuando los otros sums terminaron de enviar su información para ello tengo que realizar un recuento. Una vez terminado el recuento, se determina el aggregator al que irá determinado cliente con una funcion muy simple de hash, ya que lo pide la consigna, no realizar broadcast.
-Este recuento también está protegido por un monitor que garantiza la sincronización aunque no sería necesario ya que el otro hilo SUM_0_0 nunca deberia ejecutar ese código ya que no recibe nunca un mensaje del estilo [client_id,sum_id] pero eventualmente si lo hiciera y por alguna razón debería incrementar este contador, el mismo se encuentra protegido (puede ser un poco overhead pero al tener 2 hilos de la misma instancia es preferible realizar una sincronización en dicho caso)
+Este recuento es simplemente accedido por el hilo SUM_0_1 y por lo tanto SUM_0_0 nunca deberia ejecutar ese código ya que no recibe nunca un mensaje del estilo [client_id,sum_id].
 
 En caso de que llegue el mensaje enviar información de tal cliente, puede que la otra instancia de sum este procesando un mensaje de ese cliente, con lo cual, se guarda el cliente con el que se está interactuando y solamente se permite acceder a la información una vez que se hayan terminado de hacer arreglos, para no enviar informacion corrupta. 
 

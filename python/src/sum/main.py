@@ -17,22 +17,6 @@ EOF_SUM_TYPE = 2
 EOF_HANDLER_TYPE = 1
 
 
-class SumsAckedMonitor:
-    def __init__(self):
-        self.sums_acked = {}
-        self.lock = threading.Lock()
-
-    def start_client(self, client_id):
-        with self.lock:
-            self.sums_acked[client_id] = 1
-
-    def sum_client(self, client_id):
-        with self.lock:
-            self.sums_acked[client_id] += 1
-
-    def get_sum(self, client_id):
-        return self.sums_acked[client_id]
-
 class MonitorFruitAmounts:
     def __init__(self):
         self.amount_by_fruit = {}
@@ -68,10 +52,10 @@ class SumFilter:
             data_output_exchange = middleware.MessageMiddlewareExchangeRabbitMQ(
                 MOM_HOST, AGGREGATION_PREFIX, [f"{AGGREGATION_PREFIX}_{i}"]
             )
-            self.data_output_exchanges.append(data_output_exchange)                
-        self.monitor_sums = SumsAckedMonitor()
+            self.data_output_exchanges.append(data_output_exchange)                        
         self.monitor_fruit_amounts = MonitorFruitAmounts() 
-        self.sigterm_received = False        
+        self.sigterm_received = False     
+        self.sums_acked = {}  
 
     def _process_data(self, fruit, amount, client_id):
         self.monitor_fruit_amounts.add_fruit_amount_for_client(fruit,amount,client_id)
@@ -81,8 +65,7 @@ class SumFilter:
             logging.info(f"EOF OF {client_id}")
             for i in range (0,SUM_AMOUNT):
                 if i != ID:                            
-                    send_exchange.send_to(message_protocol.internal.serialize([client_id,ID]),f"{SUM_PREFIX}_{i}")                        
-                    self.monitor_sums.start_client(client_id)                 
+                    send_exchange.send_to(message_protocol.internal.serialize([client_id,ID]),f"{SUM_PREFIX}_{i}")                                                            
         else:
             self._send_aggregator_eof(client_id)
     
@@ -93,8 +76,10 @@ class SumFilter:
                 self.receive_exchange.send_to(message_protocol.internal.serialize([final_fruit_item.fruit, final_fruit_item.amount, client_id]),f"{SUM_PREFIX}_{sum_id}")
             self.receive_exchange.send_to(message_protocol.internal.serialize([client_id,sum_id]),f"{SUM_PREFIX}_{sum_id}")             
         else: 
-            self.monitor_sums.sum_client(client_id)
-            sums = self.monitor_sums.get_sum(client_id)                                                     
+            if client_id not in self.sums_acked:
+                self.sums_acked.setdefault(client_id, 1)
+            self.sums_acked[client_id] += 1
+            sums = self.sums_acked[client_id]                                                   
             if sums == SUM_AMOUNT:                
                 self._send_aggregator_eof(client_id)
 
