@@ -73,13 +73,15 @@ class AggregationFilter:
         )
         try:
             self.input_exchange.start_consuming(self.process_messsage)
-            self.input_exchange.close()
-            for oq in self.output_queue:
-                oq.close()
+            
         except Exception:
             if self.sigterm_received:
                 return
             raise
+        finally:
+            self.input_exchange.close()
+            for oq in self.output_queue:
+                oq.close()
 
 
 def main():

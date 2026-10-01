@@ -151,17 +151,14 @@ class SumFilter:
                 logging.error(e)
                 nack()  
                 self.receive_exchange.stop_consuming()                                           
-        self.receive_exchange.start_consuming(process_data_messsage)
-        logging.info("INPUT THREAD: consume finished")        
-        self.receive_exchange.close()
-        logging.info("INPUT THREAD: closed")
+        self.receive_exchange.start_consuming(process_data_messsage)             
+        self.receive_exchange.close()        
 
     def start(self):    
         signal.signal(
                     signal.SIGTERM,
                     lambda signum, frame: self.handle_sigterm(),
-                )        
-        
+                )                
         try:     
             if SUM_AMOUNT > 1:
                 input_thread = threading.Thread(
@@ -180,15 +177,13 @@ class SumFilter:
             for data_output_exchange in self.data_output_exchanges:
                 data_output_exchange.close()
 
-    def handle_sigterm(self):
-        logging.info("SIGTERM received")         
+    def handle_sigterm(self):        
         if not self.sigterm_received:
             self.sigterm_received = True
             self.gateway_queue.stop_consuming()
             self.gateway_queue.close() 
             self.receive_exchange.add_callback_threadsafe(self.receive_exchange.stop_consuming)            
-        logging.info("SIGTERM handler finished")                                       
-
+                                             
 def main():
     logging.basicConfig(level=logging.INFO)
     sum_filter = SumFilter()    
